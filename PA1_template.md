@@ -2,15 +2,15 @@
 
 This is a report analyzing the data from a personal activity monitoring device. This device collects data at 5 minute intervals through out the day. The data consists of two months of data from an anonymous individual collected during the months of October and November, 2012 and include the number of steps taken in 5 minute intervals each day.
 
-
-
-
 ## Loading and preprocessing the data
-First, unzip and load the activity monitoring data.
+First, unzip, load and preproces the activity monitoring data.
 
 ```r
 unzip("./activity.zip")
 act <- read.csv("./activity.csv")
+
+## convert interval identifiers to POSIXct times
+act$intervaltime <- as.POSIXct(strptime(sprintf("%04d", act$interval), "%H%M"))
 ```
 
 ## What is mean total number of steps taken per day?
@@ -53,7 +53,7 @@ hist(dailySum$dailySteps, xlab="Number of steps", main="Total number of steps ta
 Here are the mean and median total number of steps taken per day.
 
 ```r
-mean(dailySum$dailySteps)
+mean(dailySum$dailySteps, na.rm=TRUE)
 ```
 
 ```
@@ -61,7 +61,7 @@ mean(dailySum$dailySteps)
 ```
 
 ```r
-median(dailySum$dailySteps)
+median(dailySum$dailySteps, na.rm=TRUE)
 ```
 
 ```
@@ -72,27 +72,32 @@ median(dailySum$dailySteps)
 Calculate the average number of steps taken for each 5-minute interval, averaged across all days. Here, we ignore the missing values in the dataset.
 
 ```r
-intervals <- group_by(act, interval)
+intervals <- group_by(act, intervaltime)
 intervals <- summarize(intervals, steps=mean(steps, na.rm=TRUE))
+```
+
+Find out which 5-minute interval contains the maximum number of steps.
+
+```r
+ind <- which.max(intervals$step)
+mInt <- intervals$intervaltime[ind]
+mSteps <- intervals$steps[ind]
 ```
 
 Here is the time series plot of the 5-minute interval and the average number of steps taken.
 
 ```r
-plot(intervals$interval, intervals$steps, type="l", 
+plot(intervals$intervaltime, intervals$steps, type="l", 
      xlab="5-min intervals", ylab="Number of steps", main="Average daily activity pattern")
+
+## Mark the interval with the maximum number of steps
+points(mInt, mSteps, pch=19)
+text(mInt, mSteps+5, "Max")
 ```
 
 ![](PA1_template_files/figure-html/intervalsplot-1.png) 
 
-Find out which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps.
-
-```r
-ind <- which.max(intervals$step)
-mInt <- intervals$interval[ind]
-mSteps <- intervals$steps[ind]
-```
-The interval 835 contains the maximum number of steps, 206.1698113.
+The interval 08:35 contains the maximum number of steps, 206.2.
 
 
 ## Imputing missing values
@@ -109,8 +114,9 @@ sum(is.na(act$steps))
 We will fill in a missing value in the dataset with the mean for that 5-minute interval, which we calculated earlier.  A new dataset is created that is equal to the original dataset but with the missing data filled in.
 
 ```r
-act1 <- arrange(merge(act, intervals, by.x="interval", by.y="interval"), date)
-act1 <- transmute(act1, steps=ifelse(is.na(steps.x), steps.y, steps.x), date=date, interval=interval)
+act1 <- merge(act, intervals, by.x="intervaltime", by.y="intervaltime")
+act1 <- transmute(act1, steps=ifelse(is.na(steps.x), steps.y, steps.x), 
+                  date=date, intervaltime=intervaltime)
 ```
 
 Calculate the total number of steps taken each day for the new dataset.
@@ -131,7 +137,7 @@ hist(dailySum$dailySteps, xlab="Number of steps", main="Total number of steps ta
 Here are the mean and median total number of steps taken per day for the new dataset.
 
 ```r
-mean(dailySum$dailySteps)
+mean(dailySum$dailySteps, na.rm=FALSE)
 ```
 
 ```
@@ -139,7 +145,7 @@ mean(dailySum$dailySteps)
 ```
 
 ```r
-median(dailySum$dailySteps)
+median(dailySum$dailySteps, na.rm=FALSE)
 ```
 
 ```
@@ -152,10 +158,11 @@ Compare to the orginal dataset, the new dataset with missing data filled in resu
 Calculate average number of steps taken for each 5-minute interval, averaged across all weekday days or weekend days.
 
 ```r
-act1$weekday = factor(ifelse(weekdays(as.Date(act1$date)) %in% c("Saturday","Sunday"), "weekend", "weekday"))
+act1$weekday = factor(ifelse(weekdays(as.Date(act1$date)) %in% c("Saturday","Sunday"), 
+                      "weekend", "weekday"))
 
-intervals1 <- group_by(act1, interval, weekday)
-intervals1 <- summarize(intervals1, steps=mean(steps))
+intervals1 <- group_by(act1, intervaltime, weekday)
+intervals1 <- summarize(intervals1, steps=mean(steps, na.rm=FALSE))
 ```
 
 Here is the panel plot containing a time series plot of the 5-minute interval and the average number of steps taken.
@@ -169,8 +176,9 @@ library(lattice)
 ```
 
 ```r
-xyplot(intervals1$steps ~ intervals1$interval | intervals1$weekday , type="l", layout=c(1,2),
-       xlab="Interval", ylab="Number of steps")
+xyplot(intervals1$steps ~ intervals1$intervaltime | intervals1$weekday,
+       scales=list(x=list(format="%H:%M")), type="l", layout=c(1,2),
+       xlab="5-min Intervals", ylab="Number of steps")
 ```
 
 ![](PA1_template_files/figure-html/weekdaysplot-1.png) 
